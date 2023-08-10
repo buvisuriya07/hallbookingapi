@@ -1,84 +1,133 @@
-const express = require('express');
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+const bodyParser = require("body-parser");
+const uniqid = require('uniqid');
+
 const app = express();
-app.use(express.json());
+app.use(cors());
+app.use(bodyParser.json());
+const port = process.env.PORT || 3000;
 
-// Define an array to store the hall data
-let halls = [];
+app.listen(port, () => console.log(`Your app is running with ${port}`));
 
-// Define an array to store the booking data
-let bookings = [];
+let rooms = [];
+let roomNo = 100;
+let bookings =[];
+let date_regex = /^(0[1-9]|1[0-2])\/(0[1-9]|1\d|2\d|3[01])\/(19|20)\d{2}$/;
+// let time_regex = /^(0[1-9]|1\d|2[0-3])\:(0[1-9]|1\d|2\d|3\d|4\d|5\d)/;
+let time_regex = /^(0[0-9]|1\d|2[0-3])\:(00)/;
 
-// 1. Creating a Hall
-app.post('/halls', (req, res) => {
-  const { hallName, capacity, amenities, pricePerHour } = req.body;
-  const hallId = halls.length + 1;
-  const hall = {
-    hallId,
-    hallName,
-    capacity,
-    amenities,
-    pricePerHour
-  };
-  halls.push(hall);
-  res.status(201).json(hall);
-});
+app.get("/", function (req, res) {
+        res.json({
+            output: "Homepage"
+        });
 
-// 2. Booking a Hall
-app.post('/bookings', (req, res) => {
-  const { customerName, date, startTime, endTime, hallId } = req.body;
-  const bookingId = bookings.length + 1;
-  const hall = halls.find(hall => hall.hallId === hallId);
-  if (!hall) {
-    res.status(404).json({ error: 'Hall not found.' });
-    return;
-  }
-  const booking = {
-    bookingId,
-    customerName,
-    date,
-    startTime,
-    endTime,
-    hallId
-  };
-  bookings.push(booking);
-  res.status(201).json(booking);
-});
-
-// 3. List all Halls with Booked Data
-app.get('/halls/bookings', (req, res) => {
-  const bookedHalls = halls.map(hall => {
-    const bookingsForHall = bookings.filter(booking => booking.hallId === hall.hallId);
-    return {
-      hallName: hall.hallName,
-      booked: bookingsForHall.length > 0,
-      bookings: bookingsForHall
-    };
   });
-  res.json(bookedHalls);
+
+  app.get("/getAllRooms", function (req, res) {
+    res.json({
+        output: rooms
+    });
+
 });
 
-// 4. List all customers with booked Data
-app.get('/customers/bookings', (req, res) => {
-  const customersWithBookings = bookings.map(booking => {
-    const hall = halls.find(hall => hall.hallId === booking.hallId);
-    return {
-      customerName: booking.customerName,
-      hallName: hall ? hall.hallName : 'Hall not found',
-      date: booking.date,
-      startTime: booking.startTime,
-      endTime: booking.endTime
-    };
-  });
-  res.json(customersWithBookings);
+app.get("/getAllBookings", function (req, res) {
+    res.json({
+        output: bookings
+    });
+
 });
 
-// 5. List how many times a customer has booked the hall
-app.get('/customers/:customerName/bookings', (req, res) => {
-  const { customerName } = req.params;
-  const customerBookings = bookings.filter(booking => booking.customerName === customerName);
-  res.json(customerBookings);
+app.post("/createRoom", function (req, res) {
+    let room = {};
+    room.id = uniqid();
+    room.roomNo = roomNo;
+    room.bookings = [];
+    if(req.body.noSeats){room.noSeats = req.body.noSeats} else{res.status(400).json({ output: 'Please specify No of seats for Room'})};
+    if(req.body.amenities){room.amenities = req.body.amenities} else{res.status(400).json({ output: 'Please specify all Amenities for Room in Array format'})};
+    if(req.body.price){room.price = req.body.price} else{res.status(400).json({ output: 'Please specify price per hour for Room'})};
+    rooms.push(room);
+    roomNo++;
+    res.status(200).json({ output: 'Room Created Successfully'}) 
 });
 
-app.listen(3000, () => {
-  console.log('Server is running on port 3000');
+app.post("/createBooking", function (req, res) {
+    let booking = {};
+    booking.id = uniqid();
+    if(req.body.custName){booking.custName = req.body.custName} else{res.status(400).json({ output: 'Please specify customer Name for booking.'})};
+    if(req.body.date){
+        if (date_regex.test(req.body.date)) {
+            booking.date = req.body.date
+        } else{
+            res.status(400).json({ output: 'Please specify date in MM/DD/YYYY'})
+        }
+    } else{
+        res.status(400).json({ output: 'Please specify date for booking.'})
+    }
+
+    if(req.body.startTime){
+        if (time_regex.test(req.body.startTime)) {
+            booking.startTime = req.body.startTime
+        } else{
+            res.status(400).json({ output: 'Please specify time in hh:min(24-hr format) where minutes should be 00 only'})
+        }
+    } else{
+        res.status(400).json({ output: 'Please specify Starting time for booking.'})
+    }
+
+    if(req.body.endTime){
+        if (time_regex.test(req.body.endTime)) {
+            booking.endTime = req.body.endTime
+        } else{
+            res.status(400).json({ output: 'Please specify time in hh:min(24-hr format) where minutes should be 00 only'})
+        }
+    } else{
+        res.status(400).json({ output: 'Please specify Ending time for booking.'})
+    }
+
+    const availableRooms = rooms.filter(room => {
+        if(room.bookings.length == 0){
+            return true;
+        } else{
+            room.bookings.filter(book =>{
+                if((book.date == req.body.date) ){
+                    if((parseInt((book.startTime).substring(0, 1)) > parseInt((req.body.startTime).substring(0, 1)) ) && 
+                    (parseInt((book.startTime).substring(0, 1)) > parseInt((req.body.endTime).substring(0, 1)) ) ){ 
+                        if((parseInt((book.startTime).substring(0, 1)) < parseInt((req.body.startTime).substring(0, 1)) ) && 
+                          (parseInt((book.startTime).substring(0, 1)) < parseInt((req.body.endTime).substring(0, 1)) ) ){ 
+                            return true;
+                        }
+                    }
+                }
+                else{
+                    return true;
+                }
+            })
+
+        }
+    });
+    if(availableRooms.length == 0){res.status(400).json({ output: 'No Available Rooms on Selected Date and Time'})}
+   else{
+    roomRec = availableRooms[0];
+   let count =0;
+   rooms.forEach(element => {
+       if(element.roomNo == roomRec.roomNo){
+        rooms[count].bookings.push({
+            custName: req.body.custName,
+            startTime: req.body.startTime,
+            endTime: req.body.endTime,
+            date: req.body.date
+        })
+       }
+       count++;
+   });
+   let bookingRec = req.body;
+   bookingRec.roomNo = roomRec.roomNo;
+   bookingRec.cost = parseInt(roomRec.price) * (parseInt((bookingRec.endTime).substring(0, 1)) - parseInt((bookingRec.startTime).substring(0, 1)));
+
+
+   bookings.push(bookingRec);
+   res.status(200).json({ output: 'Room Booking Successfully'}) 
+}
 });
